@@ -1,42 +1,42 @@
 # arty-realtime
 
-**Arty A7 as the hardware real-time boundary** for MetaField physical experiments.
+**Zybo Z7-20 real-time boundary** for MetaField physical experiments  
+*(repo name is historical; platform target is **Zybo Z7-20**, not Arty-only.)*
 
 ```
 FAST PHYSICAL LOOP
-  Hall ×10 → ESP32 → CAN-FD → Arty A7 → S/PDIF / TOSLINK → amp → sub
+  sensors / Hall / optical → ESP32 → CAN-FD → Zybo FPGA → S/PDIF or DA4 → amp / actuators
 
 SLOW MODEL LOOP
-  Arty ↔ FT601 ↔ ProDesk ↔ MetaField ↔ setpoints → Arty
+  Zybo ↔ FT601 ↔ ProDesk ↔ MetaField ↔ setpoints → Zybo
 ```
 
-Linux is **not** in the sample path.
+Linux is **not** in the deterministic sample path.
 
-## Docs
+## Start here
 
-| File | Contents |
-|------|----------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Fast/slow loops, block diagram, design rules |
-| [CLOCKS.md](CLOCKS.md) | Who owns sample time vs Field Bus TIME_SYNC |
-| [MILESTONES.md](MILESTONES.md) | M0…M5 acceptance criteria |
-| [SPIDF_M0.md](SPIDF_M0.md) | First project: tone → encode → optical → decode → bit-perfect |
-| [INTERFACES.md](INTERFACES.md) | FT601 ↔ MetaField, Field Bus southbound, S/PDIF |
+| Doc | Contents |
+|-----|----------|
+| **[INTEGRATION.md](INTEGRATION.md)** | **Full architecture** (roles, Zybo ARM/FPGA, FT601, CAN, Hall/sub, S/PDIF, phases) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Fast/slow loops (summary) |
+| [CLOCKS.md](CLOCKS.md) | Sample clock vs Field Bus TIME_SYNC |
+| [MILESTONES.md](MILESTONES.md) | Phased pass criteria |
+| [SPIDF_M0.md](SPIDF_M0.md) | S/PDIF bit-perfect optical link |
+| [INTERFACES.md](INTERFACES.md) | Field Bus, FT601 sketch, MetaField boundary |
+
+## Immediate milestone
+
+```
+Zybo Z7-20 → FPGA test stream → FT601 → USB3 → ProDesk → verify
+```
+
+Then ESP32 CAN-FD, Hall array, S/PDIF, amp, MetaField adapter — in that order.
 
 ## Sibling repos
 
-- [field-bus](https://github.com/TheBabelDragon/field-bus) — CAN-FD protocol (ESP32 ↔ A7)
-- [optical-body-s3](https://github.com/TheBabelDragon/optical-body-s3) — optical node (same Field Bus)
-- [metafield](https://github.com/TheBabelDragon/metafield) — slow model / memory / geometry
-
-## Hardware target
-
-| Piece | Role |
-|-------|------|
-| Digilent **Arty A7** | Real-time hub |
-| **FT601Q-B** (or similar) | USB3 FIFO to ProDesk |
-| **MCP2518FD** + ESP32 nodes | Field Bus edge (Hall, optical, …) |
-| **SH-C31G** | Optional PC-side CAN-FD monitor |
-| TOSLINK TX/RX | S/PDIF optical audio |
+- [field-bus](https://github.com/TheBabelDragon/field-bus) — CAN-FD protocol
+- [optical-body-s3](https://github.com/TheBabelDragon/optical-body-s3) — optical edge node
+- [metafield](https://github.com/TheBabelDragon/metafield) — world model / simulation
 
 ---
 
