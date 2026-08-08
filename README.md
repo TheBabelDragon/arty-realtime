@@ -1,42 +1,46 @@
 # arty-realtime
 
-**Zybo Z7-20 real-time boundary** for MetaField physical experiments  
-*(repo name is historical; platform target is **Zybo Z7-20**, not Arty-only.)*
+**Eclypse Z7 real-time boundary** for MetaField physical experiments  
+*(repo name is historical.)*
 
 ```
 FAST PHYSICAL LOOP
-  sensors / Hall / optical → ESP32 → CAN-FD → Zybo FPGA → S/PDIF or DA4 → amp / actuators
+  Zmod Scope 1410 ×2 + ESP32/CAN-FD → Eclypse FPGA → S/PDIF → existing DAC/amp/sub
 
 SLOW MODEL LOOP
-  Zybo ↔ FT601 ↔ ProDesk ↔ MetaField ↔ setpoints → Zybo
+  Eclypse ↔ FT601 ↔ ProDesk ↔ MetaField ↔ setpoints → Eclypse
 ```
 
 Linux is **not** in the deterministic sample path.
 
-## Start here
+## Decision record
+
+**[docs/ADR-001-eclypse-z7-instrumentation.md](docs/ADR-001-eclypse-z7-instrumentation.md)** —  
+Pivot from Zybo + Pmods → **Eclypse Z7 + 2× Zmod Scope 1410**; Zmod AWG 1411 deferred.
+
+## Docs
 
 | Doc | Contents |
 |-----|----------|
-| **[INTEGRATION.md](INTEGRATION.md)** | **Full architecture** (roles, Zybo ARM/FPGA, FT601, CAN, Hall/sub, S/PDIF, phases) |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Fast/slow loops (summary) |
-| [CLOCKS.md](CLOCKS.md) | Sample clock vs Field Bus TIME_SYNC |
+| [INTEGRATION.md](INTEGRATION.md) | Full system architecture (update platform to Eclypse per ADR-001) |
+| [docs/ADR-001-…](docs/ADR-001-eclypse-z7-instrumentation.md) | **Current hardware decision** |
 | [MILESTONES.md](MILESTONES.md) | Phased pass criteria |
+| [protocols/ft601_frames_v0.md](protocols/ft601_frames_v0.md) | Host FIFO framing |
+| [host/phase1_ft601/](host/phase1_ft601/) | Stream verifier |
 | [SPIDF_M0.md](SPIDF_M0.md) | S/PDIF bit-perfect optical link |
-| [INTERFACES.md](INTERFACES.md) | Field Bus, FT601 sketch, MetaField boundary |
+| [INTERFACES.md](INTERFACES.md) | Field Bus / FT601 / MetaField boundary |
 
-## Immediate milestone
+## Immediate goal
 
-```
-Zybo Z7-20 → FPGA test stream → FT601 → USB3 → ProDesk → verify
-```
-
-Then ESP32 CAN-FD, Hall array, S/PDIF, amp, MetaField adapter — in that order.
+Synchronized Zmod acquisition → FT601 → MetaField → S/PDIF stimulus → existing DAC/amp/sub → measure → model.  
+First **MetaField ↔ FPGA ↔ physical world** closed loop.
 
 ## Sibling repos
 
-- [field-bus](https://github.com/TheBabelDragon/field-bus) — CAN-FD protocol
-- [optical-body-s3](https://github.com/TheBabelDragon/optical-body-s3) — optical edge node
-- [metafield](https://github.com/TheBabelDragon/metafield) — world model / simulation
+- [field-bus](https://github.com/TheBabelDragon/field-bus)
+- [optical-body-s3](https://github.com/TheBabelDragon/optical-body-s3)
+- [hall-node-s3](https://github.com/TheBabelDragon/hall-node-s3)
+- [metafield](https://github.com/TheBabelDragon/metafield)
 
 ---
 
