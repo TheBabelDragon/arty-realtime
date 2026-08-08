@@ -1,5 +1,9 @@
 # MetaField Physical-Computational Integration Architecture
 
+> **Platform update (2026-08-08):** FPGA centerpiece is **Digilent Eclypse Z7** + **2× Zmod Scope 1410**, not Zybo Z7-20 as primary.  
+> See **[docs/ADR-001-eclypse-z7-instrumentation.md](docs/ADR-001-eclypse-z7-instrumentation.md)** for the decision record.  
+> Sections below that name Zybo / Pmod AD1 / DA4 describe the *prior* plan; substitute **Eclypse** for Zybo and **Zmod 1410** for primary high-speed analog I/O. Pmod path is deferred. Zmod AWG 1411 is deferred.
+
 ## 0. Executive Architecture
 
 This project is evolving from a collection of independent experiments into a heterogeneous, closed-loop physical-computational system.
@@ -17,11 +21,10 @@ The central architecture is:
                                   USB 3 / FT601
                                         │
                          ┌──────────────▼──────────────┐
-                         │         ZYBO Z7-20           │
+                         │        ECLYPSE Z7            │
                          │  ARM PROCESSOR   FPGA FABRIC │
                          │ local control       DSP      │
-                         │ networking           timing   │
-                         │ orchestration       capture  │
+                         │ orchestration    Zmod 1410×2 │
                          └──────────────┬──────────────┘
                                         │
                               CAN / CAN-FD + I/O
@@ -90,22 +93,25 @@ Repo: [metafield](https://github.com/TheBabelDragon/metafield)
 
 ---
 
-## 3. Zybo Z7-20 — Local Heterogeneous Compute Node
+## 3. Eclypse Z7 — Local Heterogeneous Compute Node
 
-**Selected FPGA/SoC platform: Digilent Zybo Z7-20**
+**Selected FPGA/SoC platform: Digilent Eclypse Z7** (Zynq-7020)
 
 Contains both:
 
 - Zynq **ARM** processing system
 - programmable **FPGA fabric**
+- **Zmod** high-speed SYZYGY instrumentation ports
 
 ```
-                 ZYBO Z7-20
+                 ECLYPSE Z7
         ┌─────────────────────────┐
         │   ARM PROCESSOR         │
         │        │ AXI            │
         │        ▼                │
         │   FPGA FABRIC           │
+        │        │                │
+        │   Zmod Scope 1410 ×2    │
         └─────────────────────────┘
 ```
 
@@ -125,34 +131,35 @@ Local control/orchestration plane — **not** a duplicate MetaField host:
 
 Deterministic physical-computing layer:
 
-- high-speed acquisition, timestamping
+- high-speed acquisition (Zmod 1410), timestamping
 - deterministic signal processing / DSP / correlation / filtering
 - event detection, hardware state machines
 - S/PDIF encoding/decoding, digital audio processing
-- analog I/O control (via Pmods)
 - low-latency control loops, custom accelerators
 - FPGA-side CAN interface
 - real-time physical-system interaction
 
 ARM and FPGA provide deliberate redundancy at **different levels**, not duplicated workload.
 
+*(Historical: Zybo Z7-20 + Pmod AD1/DA4 plan — superseded by ADR-001.)*
+
 ---
 
 ## 4. FTDI FT601Q-B / UMFT601A-B
 
-USB 3.0 FIFO bridge between Zybo FPGA fabric and host.
+USB 3.0 FIFO bridge between Eclypse FPGA fabric and host.
 
 ```
 MetaField / ProDesk
         │ USB 3
      FT601Q-B
         │ 32-bit FIFO
-   Zybo FPGA
+   Eclypse FPGA
 ```
 
 Treat as **high-bandwidth host transport**, not a general-purpose sensor interface.
 
-Potential data: raw captures, processed frames, Hall-array state, timestamps, PCM, diagnostics, experiment/model state, control parameters, high-rate telemetry.
+Potential data: raw Zmod captures, processed frames, Hall-array state, timestamps, PCM, diagnostics, experiment/model state, control parameters, high-rate telemetry.
 
 **Initial implementation target:**
 
@@ -180,7 +187,7 @@ Localized: sensor acquisition, actuator control, preprocessing, I/O, device mana
     sensors         optical          I/O
 ```
 
-Zybo (ARM and/or fabric) should become a first-class CAN participant so not every ESP32 must talk directly to Linux.
+Eclypse (ARM and/or fabric) should become a first-class CAN participant so not every ESP32 must talk directly to Linux.
 
 ---
 
@@ -189,7 +196,7 @@ Zybo (ARM and/or fabric) should become a first-class CAN participant so not ever
 Inventory: **6 × TCA9548A** (8-channel I²C mux each).
 
 Use for structured, **lower-rate** peripherals (ADS1115, FRAM, MCP23017, env sensors, config devices, address conflicts).  
-**Not** the primary high-rate Hall waveform path.
+**Not** the primary high-rate acquisition path (that is Zmod 1410).
 
 ```
 I²C master (ESP32 / ARM / FPGA)
@@ -209,31 +216,33 @@ First major closed-loop physical demonstrator:
 - 10 Hall sensors
 - 3 kRMS subwoofer + amplifier chain
 - ESP32 acquisition + CAN-FD
-- Zybo FPGA + MetaField host
+- Eclypse FPGA + Zmod measurement + MetaField host
 
 Objective: measure electromagnetic response of the actuator and use that as feedback — not merely audio playback.
 
 ```
-audio/control command → amp → sub → magnetic field
-  → Hall ×10 → ESP32 → CAN-FD → Zybo → FT601 → MetaField
-  → model / prediction / control → Zybo → audio/control  ↺
+audio/control command → S/PDIF → existing DAC → amp → sub → magnetic field
+  → Hall ×10 → ESP32 → CAN-FD → Eclypse (+ Zmod electrical/physical channels)
+  → FT601 → MetaField → model / prediction / control → Eclypse → audio/control  ↺
 ```
 
 Measured response becomes part of the state; the actuator is not assumed to match the model exactly.
 
 ---
 
-## 8. Analog I/O
+## 8. Analog I/O (current)
 
-### Pmod AD1
+### Primary: Zmod Scope 1410 ×2
 
-Direct analog measurement, test signals, feedback, instrumentation.  
-**Not** a direct connection to high-power amp outputs — use conditioning/protection.
+Four high-speed ADC channels (see ADR-001 for example allocation).
 
-### Pmod DA4
+### Stimulus: existing DAC path via S/PDIF
 
-Four-channel analog generation, experimental control, audio/control prototyping.  
-**Not** a power amplifier — conditioning before amp.
+Not Zmod AWG 1411 initially (deferred).
+
+### Historical / deferred: Pmod AD1, DA4, etc.
+
+Lower priority; not required for the first closed loop.
 
 ---
 
@@ -241,7 +250,7 @@ Four-channel analog generation, experimental control, audio/control prototyping.
 
 ```
 FPGA PCM → S/PDIF encoder → optical TX → TOSLINK → optical RX
-  → S/PDIF decoder → PCM
+  → S/PDIF decoder → existing DAC → amp → sub
 ```
 
 FPGA implements S/PDIF logic (not a black-box USB audio gadget).
@@ -249,7 +258,7 @@ FPGA implements S/PDIF logic (not a black-box USB audio gadget).
 **Initial milestone:** known PCM → TX → optical → RX → bit-perfect compare.  
 Only then integrate the amplifier chain.
 
-See [SPIDF_M0.md](SPIDF_M0.md) (adapted to Zybo pinout when hardware is fixed).
+See [SPIDF_M0.md](SPIDF_M0.md).
 
 ---
 
@@ -257,11 +266,9 @@ See [SPIDF_M0.md](SPIDF_M0.md) (adapted to Zybo pinout when hardware is fixed).
 
 | Path | Chain |
 |------|--------|
-| Digital | FPGA → S/PDIF → optical → amp |
-| Analog | FPGA → DA4 → conditioning → amp |
-| Measurement | physical → AD1 / sensors → FPGA |
-
-Compare electrical, digital, and physical behavior deliberately.
+| Digital | FPGA → S/PDIF → optical → existing DAC → amp |
+| Measurement | physical / electrical → Zmod 1410 → FPGA |
+| Distributed | Hall / optical → ESP32 → CAN-FD → FPGA |
 
 ---
 
@@ -270,8 +277,8 @@ Compare electrical, digital, and physical behavior deliberately.
 | Layer | Role |
 |-------|------|
 | ProDesk / MetaField | global model / simulation |
-| Zybo ARM | local orchestration |
-| Zybo FPGA | deterministic physical loop |
+| Eclypse ARM | local orchestration |
+| Eclypse FPGA | deterministic physical loop |
 | ESP32 | distributed edge acquisition |
 | Physical system | actual physics |
 
@@ -287,10 +294,10 @@ MetaField (simulation, world model, AI, reconstruction, global orchestration)
         │ USB 3
      FT601Q-B
         │ 32-bit FIFO
-   Zybo Z7-20 (ARM orchestration + FPGA acquisition/DSP/timing/S/PDIF/control)
+   Eclypse Z7 (ARM orchestration + FPGA + Zmod Scope 1410 ×2)
         │
    ┌────┼────┐
- CAN-FD  AD1  DA4
+ CAN-FD  Zmod  S/PDIF
    │
  ESP32 × N  →  TCA9548A / sensors / Hall / optical nodes
    │
@@ -302,41 +309,16 @@ MetaField (simulation, world model, AI, reconstruction, global orchestration)
 
 ## 13. First Implementation Sequence
 
-### Phase 1 — Zybo + FT601
+See [MILESTONES.md](MILESTONES.md) and ADR-001.
 
-Prove: `FPGA → FT601 → USB 3 → Linux` with deterministic test data.
-
-Deliverables: FIFO implementation, FT601 interface, host receiver, framing, sequence numbers, timestamps, integrity checking.
-
-### Phase 2 — FPGA development infrastructure
-
-Register interface, clock domains, FIFOs, timestamp counter, event system, DMA/buffering, host command channel.
-
-### Phase 3 — ESP32 CAN integration
-
-Prove: `ESP32 → CAN-FD → Zybo` with Field Bus (node IDs, message types, timestamps, sensor/config/command/health frames).
-
-### Phase 4 — Hall array
-
-Ten Hall sensors via ESP32; synchronized state `H(t) = [H0…H9]`. FPGA receives raw or processed frames per bandwidth.
-
-### Phase 5 — S/PDIF
-
-`PCM → S/PDIF TX → optical → RX → PCM` exact recovery.
-
-### Phase 6 — Amplifier / subwoofer
-
-Verified path → amp at **low** levels. Establish commanded waveform → electrical → Hall response.
-
-### Phase 7 — MetaField adapter
-
-Physical-state interface adapted to existing MetaField API (not a parallel simulator):
-
-```text
-physical_state = read_physical_state()
-predicted_state = meta_field.step(physical_state=...)
-control_state = controller(physical_state, predicted_state)
-```
+1. Eclypse + FT601 test stream  
+2. FPGA infrastructure  
+3. Zmod 1410 acquisition into host  
+4. ESP32 CAN-FD  
+5. Hall array  
+6. S/PDIF  
+7. Amp/sub + measure  
+8. MetaField closed loop  
 
 ---
 
@@ -344,14 +326,12 @@ control_state = controller(physical_state, predicted_state)
 
 ```
 MetaField (predicted state)
-    → Zybo ARM (orchestration)
-    → Zybo FPGA (deterministic control)
-    → actuator → physical response → sensors
-    → ESP32 → CAN-FD → Zybo FPGA → FT601 → MetaField
+    → Eclypse ARM (orchestration)
+    → Eclypse FPGA (deterministic control)
+    → S/PDIF → DAC → amp → actuator → physical response → sensors / Zmod
+    → ESP32 → CAN-FD → Eclypse FPGA → FT601 → MetaField
     ↺
 ```
-
-The experiment becomes part of the model’s state-transition loop.
 
 ---
 
@@ -360,35 +340,32 @@ The experiment becomes part of the model’s state-transition loop.
 | Layer | Question |
 |-------|----------|
 | MetaField / ProDesk | What **should** happen? |
-| Zybo ARM | How should the local system be **coordinated**? |
-| Zybo FPGA | What must happen **deterministically right now**? |
+| Eclypse ARM | How should the local system be **coordinated**? |
+| Eclypse FPGA | What must happen **deterministically right now**? |
 | ESP32 nodes | What is happening at the **distributed edge**? |
 | Physical system | What **actually** happened? |
-
-That separation is the core architectural principle.
 
 ---
 
 ## 16. Current Hardware Integration Inventory
 
 **Host:** HP ProDesk 600 G6 Minis; Ryzen/AM4 B450M Pro4 available later  
-**FPGA/SoC:** Digilent **Zybo Z7-20**  
-**High-speed:** FTDI **FT601Q-B / UMFT601A-B**  
-**Analog:** Pmod AD1, Pmod DA4  
-**Edge:** ESP32 / ESP32-S3 / WROOM-32UE as appropriate  
-**Network:** SN65HVD230 (classic), **MCP2518FD** (CAN-FD), Field Bus protocol  
-**I²C:** 6× TCA9548A, ADS1115, MCP23017, MB85RC256V FRAM  
+**FPGA/SoC:** Digilent **Eclypse Z7**  
+**Instrumentation:** **2× Zmod Scope 1410**  
+**High-speed host link:** FTDI **FT601Q-B / UMFT601A-B**  
+**Deferred:** Zmod AWG 1411, Pmod cart as primary path  
+**Edge:** ESP32 / ESP32-S3 as appropriate  
+**Network:** SN65HVD230, **MCP2518FD**, Field Bus  
+**I²C:** 6× TCA9548A, ADS1115, MCP23017, FRAM  
 **Sense:** 10× Hall, BPW34 / optical substrate  
-**Actuate:** 3 kRMS sub, amp chain, custom S/PDIF optical path  
-**Lab:** KORAD KD3005D, rework tools, thermal, wiring inventory  
+**Actuate:** 3 kRMS sub, existing DAC + amp, S/PDIF optical path  
+**Also owned:** Arty A7 (secondary)  
 
 ---
 
 ## 17. Long-Term Physical-Computational Vision
 
 Heterogeneous substrate across CPU, optional GPU, ARM, FPGA, ESP32 edge, optical/EM interactions, sensor-derived state, and model state — with **feedback** between domains.
-
-Not `computer → experiment`, but:
 
 ```text
 computer ↔ experiment
@@ -399,15 +376,10 @@ model ↔ hardware ↔ physical system
 
 ## 18. Immediate Next Milestone
 
-Do not expand inventory unnecessarily.
-
 ```
-ZYBO Z7-20 → FPGA test logic → FT601Q-B → ProDesk Linux → capture/verification
+Eclypse Z7 → FPGA test logic → FT601 → ProDesk → verify
 ```
 
-Then: `ESP32 → CAN-FD → Zybo`  
-Then: `Hall → CAN-FD → Zybo → FT601 → MetaField`  
-Then: `MetaField → Zybo → S/PDIF/DA4 → amp → sub`  
-Then close the loop.
+Then Zmod acquisition, CAN-FD, Hall, S/PDIF, amp/sub, MetaField close.
 
 **Build from the transport boundary outward.**
