@@ -1,66 +1,52 @@
 # Milestones
 
-Platform: **Digilent Eclypse Z7** + **2× Zmod Scope 1410** + **FT601**  
-(See [docs/ADR-001-eclypse-z7-instrumentation.md](docs/ADR-001-eclypse-z7-instrumentation.md).)
+Platform: **Eclypse Z7** + **2× Zmod Scope 1410**  
+Host link: **Gigabit Ethernet** (ADR-002). FT601 deferred.
 
-## Phase 1 — Eclypse + FT601 transport
+## Phase 1 — Eclypse ↔ Ethernet ↔ MetaField
 
-**Goal:** `FPGA → FT601 → USB3 → Linux` bit-perfect test stream.
+**Goal:** PS transport up; UDP data plane + optional TCP control.
 
-**Pass:** contiguous sequence, host `verify_stream.py` PASS (≥10 s).
-
----
-
-## Phase 2 — FPGA infrastructure
-
-Registers, clocks, FIFOs, timestamp counter, host command channel.
+**Pass:** `host/phase1_ethernet/verify_udp_stream.py` PASS ≥10 s.
 
 ---
 
-## Phase 3 — Zmod Scope 1410 acquisition
+## Phase 2 — Zmod → FPGA → DMA → Ethernet
 
-**Goal:** Synchronized capture on up to 4 ADC channels into fabric → FT601.
+1410 acquisition into framed UDP (`ADC_RAW` / later FEATURE).
 
-**Pass:** Host receives framed samples with timestamps; known test signal recoverable.
-
----
-
-## Phase 4 — ESP32 CAN-FD
-
-**Goal:** `ESP32 → CAN-FD → Eclypse` via [field-bus](https://github.com/TheBabelDragon/field-bus).
-
-**Pass:** HELLO / STATUS / TIME_SYNC; node ONLINE.
+**Pass:** known test signal recoverable on host with timestamps.
 
 ---
 
-## Phase 5 — Hall array on bus
+## Phase 3 — CAN-FD + synchronized time
 
-Ten Hall channels via ESP32; aligned with FPGA timebase where possible.
-
----
-
-## Phase 6 — S/PDIF
-
-`PCM → TX → optical → RX → PCM` bit-perfect, then into existing DAC path.
+ESP32 Field Bus + Eclypse; correlate Hall with Zmod timestamps.
 
 ---
 
-## Phase 7 — Amp / sub (low level) + measure
+## Phase 4 — S/PDIF → amp → sub → measure
 
-Stimulus → amp → sub; electrical/physical response on Zmod 1410s (+ Hall).
-
----
-
-## Phase 8 — MetaField adapter (first closed loop)
-
-Measurements → MetaField → new stimulus → Eclypse → S/PDIF → … → measure again.
-
-**Pass:** Supervisory close without Linux in the sample path.
+Digital stimulus path + 1410/Hall feedback (low level).
 
 ---
 
-## Tracking
+## Phase 5 — FPGA DSP / features
 
-Record each pass under `lab/`. Do not start Phase n+1 until Phase n is checked off.
+RAW | FEATURE | HYBRID modes; reduce continuous raw bandwidth.
 
-**Deferred:** Zmod AWG 1411 until Phase 8 limitations justify it.
+---
+
+## Phase 6 — MetaField closes the loop
+
+`acquire → observe → command → actuate → measure`.
+
+---
+
+## Phase 7 — FT601 only if needed
+
+Measured Ethernet bottleneck → then evaluate USB3 FIFO.
+
+---
+
+Record passes under `lab/`.
